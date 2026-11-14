@@ -1,0 +1,36 @@
+name: Verify
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: Commit before the stack was merged
+        required: true
+      tag:
+        description: Tag at the commit after the merge
+        required: true
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: What GitHub records
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api graphql -f query='query($ref:String!){ viewer{login} repository(owner:"okbear",name:"release-drafter-stack-test"){ object(expression:$ref){ ... on Commit { history(first:12){ nodes { abbreviatedOid messageHeadline parents{totalCount} associatedPullRequests(first:5){ nodes { number stack{id} } } } } } } pullRequests(last:9){ nodes { number title merged baseRefName mergeCommit{abbreviatedOid} stackEntry{position} } } } }' -f ref='refs/tags/${{ inputs.tag }}^{commit}' --jq '.data | (.viewer.login), (.repository.object.history.nodes[] | "commit \(.abbreviatedOid) parents=\(.parents.totalCount) prs=\([.associatedPullRequests.nodes[] | "#\(.number)\(if .stack then "(stack)" else "" end)"] | join(",")) \(.messageHeadline)"), (.repository.pullRequests.nodes[] | "pr #\(.number) merged=\(.merged) base=\(.baseRefName) mergeCommit=\(.mergeCommit.abbreviatedOid) position=\(.stackEntry.position) \(.title)")'
+      - name: Upstream v7.10.0
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          config-name: release-drafter.yml
+          from: ${{ inputs.from }}
+          commitish: refs/tags/${{ inputs.tag }}
+          dry-run: true
+      - name: Fork build
+        uses: okbear/release-drafter@a9cca05666e785d74328fa039b6cfbc6bb780031
+        with:
+          config-name: release-drafter.yml
+          from: ${{ inputs.from }}
+          commitish: refs/tags/${{ inputs.tag }}
+          dry-run: true
